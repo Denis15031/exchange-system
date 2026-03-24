@@ -1,0 +1,14 @@
+﻿syntax = "proto3";
+
+package common;
+
+option go_package = "exchange-system/order-service/proto/common";
+
+import "google/protobuf/timestamp.proto";
+
+message Empty {}
+
+message PageInfo {
+  int32 total_count = 1;
+  string next_page_token = 2;
+}

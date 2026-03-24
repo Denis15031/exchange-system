@@ -1,0 +1,10 @@
+*.exe
+*.test
+*.out
+vendor/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.env
+go.work.sum
