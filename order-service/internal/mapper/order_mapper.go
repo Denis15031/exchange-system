@@ -1,51 +1,107 @@
 package mapper
 
 import (
-	"exchange-system/order-service/internal/domain"
-	orderV1 "exchange-system/order-service/proto/order/v1"
+	"time"
 
+	"exchange-system/order-service/internal/domain"
+	orderv1 "exchange-system/proto/order/v1"
 	"github.com/shopspring/decimal"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func ToProtoOrder(o *domain.Order) *orderV1.Order {
+func ToProto(o *domain.Order) *orderv1.Order {
 	if o == nil {
 		return nil
 	}
 
-	return &orderV1.Order{
-		Id:             o.ID,
+	return &orderv1.Order{
+		OrderId:        o.ID,
 		UserId:         o.UserID,
 		MarketId:       o.MarketID,
-		Type:           orderV1.OrderType(orderV1.OrderType_value[string(o.Type)]),
+		Type:           OrderTypeToProto(o.Type),
+		Status:         OrderStatusToProto(o.Status),
 		Price:          o.Price.String(),
 		Quantity:       o.Quantity.String(),
 		FilledQuantity: o.FilledQuantity.String(),
-		Status:         orderV1.OrderStatus(orderV1.OrderStatus_value[string(o.Status)]),
-		CreatedAt:      timestamppb.New(o.CreatedAt),
-		UpdatedAt:      timestamppb.New(o.UpdatedAt),
+		CreatedAt:      o.CreatedAt.Unix(),
+		UpdatedAt:      o.UpdatedAt.Unix(),
 	}
 }
 
-func ToDomainOrder(pb *orderV1.Order) *domain.Order {
-	if pb == nil {
+func ToDomain(p *orderv1.Order) *domain.Order {
+	if p == nil {
 		return nil
 	}
 
-	price, _ := decimal.NewFromString(pb.Price)
-	qty, _ := decimal.NewFromString(pb.Quantity)
-	filledQty, _ := decimal.NewFromString(pb.FilledQuantity)
+	price, _ := decimal.NewFromString(p.Price)
+	quantity, _ := decimal.NewFromString(p.Quantity)
+	filledQty, _ := decimal.NewFromString(p.FilledQuantity)
 
 	return &domain.Order{
-		ID:             pb.Id,
-		UserID:         pb.UserId,
-		MarketID:       pb.MarketId,
-		Type:           domain.OrderType(pb.Type),
+		ID:             p.OrderId,
+		UserID:         p.UserId,
+		MarketID:       p.MarketId,
+		Type:           OrderTypeFromProto(p.Type),
+		Status:         OrderStatusFromProto(p.Status),
 		Price:          price,
-		Quantity:       qty,
+		Quantity:       quantity,
 		FilledQuantity: filledQty,
-		Status:         domain.OrderStatus(pb.Status),
-		CreatedAt:      pb.CreatedAt.AsTime(),
-		UpdatedAt:      pb.UpdatedAt.AsTime(),
+		CreatedAt:      time.Unix(p.CreatedAt, 0),
+		UpdatedAt:      time.Unix(p.UpdatedAt, 0),
+	}
+}
+
+func OrderTypeToProto(t domain.OrderType) orderv1.OrderType {
+	switch t {
+	case domain.OrderTypeBuy:
+		return orderv1.OrderType_ORDER_TYPE_BUY
+	case domain.OrderTypeSell:
+		return orderv1.OrderType_ORDER_TYPE_SELL
+	default:
+		return orderv1.OrderType_ORDER_TYPE_UNSPECIFIED
+	}
+}
+
+func OrderTypeFromProto(t orderv1.OrderType) domain.OrderType {
+	switch t {
+	case orderv1.OrderType_ORDER_TYPE_BUY:
+		return domain.OrderTypeBuy
+	case orderv1.OrderType_ORDER_TYPE_SELL:
+		return domain.OrderTypeSell
+	default:
+		return ""
+	}
+}
+
+func OrderStatusToProto(s domain.OrderStatus) orderv1.OrderStatus {
+	switch s {
+	case domain.OrderStatusCreated:
+		return orderv1.OrderStatus_ORDER_STATUS_CREATED
+	case domain.OrderStatusPending:
+		return orderv1.OrderStatus_ORDER_STATUS_PENDING
+	case domain.OrderStatusFilled, domain.OrderStatusPartiallyFilled:
+		return orderv1.OrderStatus_ORDER_STATUS_FILLED
+	case domain.OrderStatusCanceled:
+		return orderv1.OrderStatus_ORDER_STATUS_CANCELLED
+	case domain.OrderStatusRejected:
+		return orderv1.OrderStatus_ORDER_STATUS_REJECTED
+	default:
+		return orderv1.OrderStatus_ORDER_STATUS_UNSPECIFIED
+	}
+}
+
+func OrderStatusFromProto(s orderv1.OrderStatus) domain.OrderStatus {
+	switch s {
+	case orderv1.OrderStatus_ORDER_STATUS_CREATED:
+		return domain.OrderStatusCreated
+	case orderv1.OrderStatus_ORDER_STATUS_PENDING:
+		return domain.OrderStatusPending
+	case orderv1.OrderStatus_ORDER_STATUS_FILLED:
+		return domain.OrderStatusFilled
+	case orderv1.OrderStatus_ORDER_STATUS_CANCELLED:
+		return domain.OrderStatusCanceled
+	case orderv1.OrderStatus_ORDER_STATUS_REJECTED:
+		return domain.OrderStatusRejected
+	default:
+		return ""
 	}
 }

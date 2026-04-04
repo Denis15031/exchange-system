@@ -1,3 +1,7 @@
+*.pem
+*.key
+tokens.json
+
 *.exe
 *.test
 *.out

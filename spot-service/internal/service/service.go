@@ -14,7 +14,6 @@ func NewSpotService(repo ports.MarketRepository) *SpotService {
 	return &SpotService{repo: repo}
 }
 
-// Возвращает только активные
 func (s *SpotService) ViewMarkets(ctx context.Context, userRoles []string) ([]domain.Market, error) {
 	allMarkets, err := s.repo.GetAll(ctx)
 	if err != nil {
@@ -49,7 +48,6 @@ func (s *SpotService) ViewMarkets(ctx context.Context, userRoles []string) ([]do
 	return activeMarkets, nil
 }
 
-// Возвращает рынок если он существует
 func (s *SpotService) GetMarketByID(ctx context.Context, id string) (*domain.Market, error) {
 	return s.repo.GetByID(ctx, id)
 }

@@ -1,12 +1,14 @@
 syntax = "proto3";
-
 package order.v1;
 
-option go_package = "exchange-system/order-service/proto/order/v1";
 
-import "google/protobuf/timestamp.proto";
+option go_package = "exchange-system/proto/order/v1";
+
+
 import "common/common.proto";
-import "spot/v1/spot.proto";
+import "user/v1/user.proto";
+
+
 
 enum OrderType {
   ORDER_TYPE_UNSPECIFIED = 0;
@@ -19,9 +21,23 @@ enum OrderStatus {
   ORDER_STATUS_CREATED = 1;
   ORDER_STATUS_PENDING = 2;
   ORDER_STATUS_FILLED = 3;
-  ORDER_STATUS_PARTIALLY_FILLED = 4;
-  ORDER_STATUS_CANCELLED = 5;
-  ORDER_STATUS_REJECTED = 6;
+  ORDER_STATUS_CANCELLED = 4;
+  ORDER_STATUS_REJECTED = 5;
+}
+
+
+message Order {
+  string order_id = 1;
+  string user_id = 2;
+  string market_id = 3;
+  OrderType type = 4;
+  OrderStatus status = 5;
+  string price = 6;
+  string quantity = 7;
+  string filled_quantity = 8;
+  string idempotency_key = 9;
+  int64 created_at = 10;
+  int64 updated_at = 11;
 }
 
 message CreateOrderRequest {
@@ -30,35 +46,38 @@ message CreateOrderRequest {
   OrderType type = 3;
   string price = 4;
   string quantity = 5;
-  string client_order_id = 6;
+  string idempotency_key = 6;
+  user.v1.UserRole user_role = 7;
 }
 
 message CreateOrderResponse {
   string order_id = 1;
-  OrderStatus status = 2;
-  google.protobuf.Timestamp created_at = 3;
-  string message = 4;
+  string status = 2;
 }
 
-message GetOrderRequest {
+message GetOrderStatusRequest {
   string order_id = 1;
   string user_id = 2;
 }
 
-message GetOrderResponse {
-  string order_id = 1;
-  string user_id = 2;
-  string market_id = 3;
-  OrderType type = 4;
-  string price = 5;
-  string quantity = 6;
-  string filled_quantity = 7;
-  OrderStatus status = 8;
-  google.protobuf.Timestamp created_at = 9;
-  google.protobuf.Timestamp updated_at = 10;
+message GetOrderStatusResponse {
+  Order order = 1;
 }
+
+
+message ListOrdersRequest {
+  string user_id = 1;
+  common.PaginationRequest pagination = 2;
+}
+
+message ListOrdersResponse {
+  repeated Order orders = 1;
+  common.PaginationResponse pagination = 2;
+}
+
 
 service OrderService {
   rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
-  rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
+  rpc GetOrderStatus(GetOrderStatusRequest) returns (GetOrderStatusResponse);
+  rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
 }

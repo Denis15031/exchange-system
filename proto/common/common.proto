@@ -1,14 +1,26 @@
 ﻿syntax = "proto3";
-
 package common;
+
 
 option go_package = "exchange-system/proto/common";
 
-import "google/protobuf/timestamp.proto";
 
-message Empty {}
+message PaginationRequest {
+  int32 page_number = 1;
+  int32 page_size = 2;
+}
 
-message PageInfo {
+
+message PaginationResponse {
   int32 total_count = 1;
-  string next_page_token = 2;
+  int32 page_number = 2;
+  int32 page_size = 3;
+  int32 total_pages = 4;
+}
+
+
+message ErrorResponse {
+  string code = 1;
+  string message = 2;
+  repeated string details = 3;
 }

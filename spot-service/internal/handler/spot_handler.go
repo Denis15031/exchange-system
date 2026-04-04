@@ -3,58 +3,47 @@ package handler
 import (
 	"context"
 
-	common "exchange-system/spot-service/proto/common"
-	v1 "exchange-system/spot-service/proto/spot/v1"
-
+	spotv1 "exchange-system/proto/spot/v1"
 	"exchange-system/spot-service/internal/mapper"
 	"exchange-system/spot-service/internal/service"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
-// Реализует gRPC сервер
 type SpotHandler struct {
-	v1.UnimplementedSpotInstrumentServiceServer
-	service *service.SpotService
+	spotService *service.SpotService
+	spotv1.UnimplementedSpotInstrumentServiceServer
 }
 
-func NewSpotHandler(svc *service.SpotService) *SpotHandler {
-	return &SpotHandler{service: svc}
+func NewSpotHandler(spotService *service.SpotService) *SpotHandler {
+	return &SpotHandler{
+		spotService: spotService,
+	}
 }
 
-// Обрабатывает запрос на получение списка рынков
-func (h *SpotHandler) ViewMarkets(ctx context.Context, req *v1.ViewMarketsRequest) (*v1.ViewMarketsResponse, error) {
-	markets, err := h.service.ViewMarkets(ctx, req.GetUserRoles())
+func (h *SpotHandler) ViewMarkets(ctx context.Context, req *spotv1.ViewMarketsRequest) (*spotv1.ViewMarketsResponse, error) {
+	userRoles := mapper.UserRolesFromProto(req.GetUserRoles())
+
+	markets, err := h.spotService.ViewMarkets(ctx, userRoles)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failde to get markets: %v", err)
+		return nil, err
 	}
 
-	pbMarkets := mapper.ToProtoMarketList(markets)
+	protoMarkets := make([]*spotv1.Market, 0, len(markets))
+	for i := range markets {
+		protoMarkets = append(protoMarkets, mapper.ToProto(&markets[i]))
+	}
 
-	return &v1.ViewMarketsResponse{
-		Markets: pbMarkets,
-
-		PageInfo: &common.PageInfo{
-			TotalCount: int32(len(markets)),
-		},
+	return &spotv1.ViewMarketsResponse{
+		Markets: protoMarkets,
 	}, nil
 }
 
-func (h *SpotHandler) GetMarket(ctx context.Context, req *v1.GetMarketRequest) (*v1.GetMarketResponse, error) {
-	if req.MarketId == "" {
-		return nil, status.Error(codes.InvalidArgument, "market_id is required")
-	}
-
-	market, err := h.service.GetMarketByID(ctx, req.MarketId)
+func (h *SpotHandler) GetMarket(ctx context.Context, req *spotv1.GetMarketRequest) (*spotv1.GetMarketResponse, error) {
+	market, err := h.spotService.GetMarketByID(ctx, req.MarketId)
 	if err != nil {
-		if err.Error() == "market not found" {
-			return nil, status.Error(codes.NotFound, "market not found")
-		}
-		return nil, status.Errorf(codes.Internal, "failed to get market: %v", err)
+		return nil, err
 	}
 
-	return &v1.GetMarketResponse{
-		Market: mapper.ToProtoMarket(*market),
+	return &spotv1.GetMarketResponse{
+		Market: mapper.ToProto(market),
 	}, nil
 }

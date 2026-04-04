@@ -2,7 +2,7 @@ package mapper
 
 import (
 	"exchange-system/order-service/internal/domain"
-	spotV1 "exchange-system/order-service/proto/spot/v1"
+	spotV1 "exchange-system/proto/spot/v1"
 	"github.com/shopspring/decimal"
 )
 
@@ -17,7 +17,7 @@ func ToDomainMarket(pb *spotV1.Market) *domain.Market {
 	sizeInc, _ := decimal.NewFromString(pb.SizeIncrement)
 
 	m := &domain.Market{
-		ID:             pb.Id,
+		ID:             pb.MarketId,
 		Symbol:         pb.Symbol,
 		BaseCurrency:   pb.BaseCurrency,
 		QuoteCurrency:  pb.QuoteCurrency,
@@ -27,7 +27,7 @@ func ToDomainMarket(pb *spotV1.Market) *domain.Market {
 		PriceIncrement: priceInc,
 		SizeIncrement:  sizeInc,
 		DeletedAt:      nil,
-		AllowedRoles:   pb.AllowedRoles,
+		AllowedRoles:   []string{},
 	}
 
 	return m
