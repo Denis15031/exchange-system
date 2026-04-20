@@ -1,0 +1,110 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: exchange-redis
+    ports: ["6379:6379"]
+    volumes: [redis_/data]
+    networks: [exchange-net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: exchange-prometheus
+    ports: ["9090:9090"]
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.enable-lifecycle'
+    networks: [exchange-net]
+    depends_on: [spot-service, user-service, order-service]
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: exchange-grafana
+    ports: ["3000:3000"]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes: [grafana_/var/lib/grafana]
+    networks: [exchange-net]
+    depends_on: [prometheus]
+
+  spot-service:
+    build:
+      context: .
+      dockerfile: spot-service/Dockerfile
+      args:
+        MAIN_PATH: ./spot-service/main.go
+    container_name: exchange-spot
+    ports: ["50054:50054", "9094:9094"]
+    environment:
+      GRPC_PORT: ":50054"
+      METRICS_PORT: ":9094"
+      LOG_LEVEL: "info"
+      USE_REDIS: "true"
+      REDIS_ADDR: "redis:6379"
+    depends_on:
+      redis: { condition: service_healthy }
+    networks: [exchange-net]
+    restart: unless-stopped
+
+  user-service:
+    build:
+      context: .
+      dockerfile: user-service/Dockerfile
+      args:
+        MAIN_PATH: ./user-service/main.go
+    container_name: exchange-user
+    ports: ["50053:50053", "9093:9093"]
+    environment:
+      GRPC_PORT: ":50053"
+      METRICS_PORT: ":9093"
+      LOG_LEVEL: "info"
+      USE_REDIS: "true"
+      REDIS_ADDR: "redis:6379"
+      JWT_SECRET_OR_PUBLIC_KEY: "dev-secret-change-in-prod"
+      JWT_PRIVATE_KEY_PATH: "/app/secrets/jwt_private.pem"
+      JWT_PUBLIC_KEY_PATH: "/app/secrets/jwt_public.pem"
+    volumes:
+      - ./user-service/jwt_private.pem:/app/secrets/jwt_private.pem:ro
+      - ./user-service/jwt_public.pem:/app/secrets/jwt_public.pem:ro
+    depends_on:
+      redis: { condition: service_healthy }
+    networks: [exchange-net]
+    restart: unless-stopped
+
+  order-service:
+    build:
+      context: .
+      dockerfile: order-service/Dockerfile
+      args:
+        MAIN_PATH: ./order-service/main.go
+    container_name: exchange-order
+    ports: ["50052:50052", "9091:9091"]
+    environment:
+      GRPC_PORT: ":50052"
+      METRICS_PORT: ":9091"
+      LOG_LEVEL: "info"
+      USE_REDIS: "true"
+      REDIS_ADDR: "redis:6379"
+      JWT_SECRET_OR_PUBLIC_KEY: "dev-secret-change-in-prod"
+    depends_on:
+      redis: { condition: service_healthy }
+    networks: [exchange-net]
+    restart: unless-stopped
+
+networks:
+  exchange-net: { driver: bridge }
+
+volumes:
+  redis:
+  prometheus:
+  grafana:
+  postgres:

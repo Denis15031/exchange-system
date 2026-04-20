@@ -1,34 +1,35 @@
 syntax = "proto3";
-
 package spot.v1;
 
-option go_package = "exchange-system/order-service/proto/spot/v1";
+option go_package = "exchange-system/proto/spot/v1";
 
 import "google/protobuf/timestamp.proto";
-import "common/common.proto";
+import "proto/common/common.proto";
+import "proto/user/v1/user.proto";
 
 message Market {
-  string id = 1;
+  string market_id = 1;
   string symbol = 2;
   string base_currency = 3;
   string quote_currency = 4;
   bool enabled = 5;
-  google.protobuf.Timestamp deleted_at = 6;
-  string min_order_size = 7;
-  string max_order_size = 8;
-  string price_increment = 9;
-  string size_increment = 10;
-
-  repeated string allowed_roles = 11;
+  string min_order_size = 6;
+  string max_order_size = 7;
+  string price_increment = 8;
+  string size_increment = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+  google.protobuf.Timestamp deleted_at = 12;
 }
 
 message ViewMarketsRequest {
-  repeated string user_roles = 1;
+  repeated user.v1.UserRole user_roles = 1;
+  common.CursorPaginationRequest pagination = 2;
 }
 
 message ViewMarketsResponse {
   repeated Market markets = 1;
-  common.PageInfo page_info = 2;
+  common.CursorPaginationResponse pagination = 2;
 }
 
 message GetMarketRequest {

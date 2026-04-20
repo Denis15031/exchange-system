@@ -3,58 +3,94 @@ package handler
 import (
 	"context"
 
-	common "exchange-system/spot-service/proto/common"
-	v1 "exchange-system/spot-service/proto/spot/v1"
-
+	commonv1 "exchange-system/proto/common"
+	spotv1 "exchange-system/proto/spot/v1"
 	"exchange-system/spot-service/internal/mapper"
 	"exchange-system/spot-service/internal/service"
 
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-// Реализует gRPC сервер
 type SpotHandler struct {
-	v1.UnimplementedSpotInstrumentServiceServer
-	service *service.SpotService
+	spotv1.UnimplementedSpotInstrumentServiceServer
+	spotService *service.SpotService
+	logger      *zap.Logger
 }
 
-func NewSpotHandler(svc *service.SpotService) *SpotHandler {
-	return &SpotHandler{service: svc}
+func NewSpotHandler(spotService *service.SpotService, logger *zap.Logger) *SpotHandler {
+	return &SpotHandler{
+		spotService: spotService,
+		logger:      logger,
+	}
 }
 
-// Обрабатывает запрос на получение списка рынков
-func (h *SpotHandler) ViewMarkets(ctx context.Context, req *v1.ViewMarketsRequest) (*v1.ViewMarketsResponse, error) {
-	markets, err := h.service.ViewMarkets(ctx, req.GetUserRoles())
+func (h *SpotHandler) ViewMarkets(ctx context.Context, req *spotv1.ViewMarketsRequest) (*spotv1.ViewMarketsResponse, error) {
+	h.logger.Debug("ViewMarkets request received",
+		zap.Int("user_roles_count", len(req.GetUserRoles())),
+	)
+
+	userRoles := mapper.UserRolesFromProto(req.GetUserRoles())
+
+	markets, nextPage, hasMore, err := h.spotService.ViewMarkets(ctx, userRoles, req.GetPagination())
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failde to get markets: %v", err)
+		h.logger.Error("ViewMarkets failed", zap.Error(err))
+		return nil, h.toGRPCError(err)
 	}
 
-	pbMarkets := mapper.ToProtoMarketList(markets)
+	protoMarkets := make([]*spotv1.Market, 0, len(markets))
+	for i := range markets {
+		protoMarkets = append(protoMarkets, mapper.ToProto(&markets[i]))
+	}
 
-	return &v1.ViewMarketsResponse{
-		Markets: pbMarkets,
+	h.logger.Debug("ViewMarkets success", zap.Int("markets_count", len(protoMarkets)))
 
-		PageInfo: &common.PageInfo{
-			TotalCount: int32(len(markets)),
+	return &spotv1.ViewMarketsResponse{
+		Markets: protoMarkets,
+		Pagination: &commonv1.CursorPaginationResponse{
+			NextPageToken: nextPage,
+			HasMore:       hasMore,
 		},
 	}, nil
 }
 
-func (h *SpotHandler) GetMarket(ctx context.Context, req *v1.GetMarketRequest) (*v1.GetMarketResponse, error) {
+func (h *SpotHandler) GetMarket(ctx context.Context, req *spotv1.GetMarketRequest) (*spotv1.GetMarketResponse, error) {
 	if req.MarketId == "" {
 		return nil, status.Error(codes.InvalidArgument, "market_id is required")
 	}
 
-	market, err := h.service.GetMarketByID(ctx, req.MarketId)
+	h.logger.Debug("GetMarket request received", zap.String("market_id", req.MarketId))
+
+	market, err := h.spotService.GetMarketByID(ctx, req.MarketId)
 	if err != nil {
-		if err.Error() == "market not found" {
-			return nil, status.Error(codes.NotFound, "market not found")
-		}
-		return nil, status.Errorf(codes.Internal, "failed to get market: %v", err)
+		h.logger.Warn("GetMarket failed",
+			zap.String("market_id", req.MarketId),
+			zap.Error(err),
+		)
+		return nil, h.toGRPCError(err)
 	}
 
-	return &v1.GetMarketResponse{
-		Market: mapper.ToProtoMarket(*market),
+	h.logger.Debug("GetMarket success", zap.String("market_id", req.MarketId))
+
+	return &spotv1.GetMarketResponse{
+		Market: mapper.ToProto(market),
 	}, nil
+}
+
+func (h *SpotHandler) toGRPCError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	switch err {
+	case service.ErrMarketNotFound:
+		return status.Error(codes.NotFound, "market not found")
+	case service.ErrInvalidMarket, service.ErrInvalidRole:
+		return status.Error(codes.InvalidArgument, "invalid request parameters")
+	case service.ErrPermissionDenied:
+		return status.Error(codes.PermissionDenied, "access denied")
+	default:
+		return status.Error(codes.Internal, "internal server error")
+	}
 }

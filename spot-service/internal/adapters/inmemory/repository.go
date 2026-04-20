@@ -32,7 +32,6 @@ func NewRepository() ports.MarketRepository {
 }
 
 func (r *Repository) seedData() {
-
 	now := time.Now()
 
 	btcUsd := domain.Market{
@@ -85,17 +84,27 @@ func (r *Repository) seedData() {
 }
 
 func (r *Repository) GetAll(ctx context.Context) ([]domain.Market, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	result := make([]domain.Market, 0, len(r.markets))
 	for _, m := range r.markets {
-		result = append(result, m)
+		cp := m
+		result = append(result, cp)
 	}
 	return result, nil
 }
 
 func (r *Repository) GetByID(ctx context.Context, id string) (*domain.Market, error) {
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -104,5 +113,6 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*domain.Market, er
 		return nil, ErrMarketNotFound
 	}
 
-	return &market, nil
+	cp := market
+	return &cp, nil
 }

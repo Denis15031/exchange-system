@@ -1,7 +1,11 @@
 go 1.25.1
 
 use (
+	./integration
+	./order-client
 	./order-service
+	./proto
 	./shared
 	./spot-service
+	./user-service
 )

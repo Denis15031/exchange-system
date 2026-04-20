@@ -1,72 +1,75 @@
 package main
 
 import (
-	"log"
+	"context"
 	"net"
-	"net/http"
 
-	"exchange-system/spot-service/internal/adapters/inmemory"
+	spotV1 "exchange-system/proto/spot/v1"
+	"exchange-system/shared/interceptors"
+	"exchange-system/shared/ratelimit"
+	"exchange-system/spot-service/internal/config"
+	"exchange-system/spot-service/internal/di"
 	"exchange-system/spot-service/internal/handler"
 	"exchange-system/spot-service/internal/service"
 
-	v1 "exchange-system/spot-service/proto/spot/v1"
-
-	"exchange-system/shared/interceptors"
-
-	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.uber.org/fx"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
 
 func main() {
-	logger, err := zap.NewProduction()
-	if err != nil {
-		log.Fatalf("failed to initialize logger: %v", err)
-	}
-	defer logger.Sync()
+	app := fx.New(
+		di.SpotModule,
 
-	logger.Info("Starting SpotInstrumentService...")
+		fx.Invoke(func(
+			lc fx.Lifecycle,
+			logger *zap.Logger,
+			cfg *config.Config,
+			svc *service.SpotService,
+			h *handler.SpotHandler,
+		) {
 
-	// Инициализация слоев
-	repo := inmemory.NewRepository()
-	spotSVC := service.NewSpotService(repo)
-	spotHandler := handler.NewSpotHandler(spotSVC)
+			rlCfg := ratelimit.RateLimitConfig{
+				RequestsPerSecond: float64(cfg.RateLimitRPS),
+				MaxBurst:          cfg.RateLimitBurst,
+			}
 
-	// Включаем метрики gRPC
-	grpc_prometheus.EnableHandlingTimeHistogram()
+			grpcServer := grpc.NewServer(
+				grpc.ChainUnaryInterceptor(
+					interceptors.XRequestID(),
+					interceptors.LoggerInterceptor(logger),
+					interceptors.UnaryPanicRecoveryInterceptor(logger),
+					ratelimit.UnaryServerInterceptor(
+						ratelimit.NewRateLimiter(rlCfg),
+					),
+				),
+			)
 
-	// Запуск сервера метрик (Prometheus)
-	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		logger.Info("Prometheus metrics server started on :9090")
-		if err := http.ListenAndServe(":9090", nil); err != nil {
-			logger.Fatal("failed to start metrics server", zap.Error(err))
-		}
-	}()
+			spotV1.RegisterSpotInstrumentServiceServer(grpcServer, h)
 
-	// Создание gRPC сервера с интерсепторами из shared
-	grpcServer := grpc.NewServer(
-		grpc.ChainUnaryInterceptor(
-			interceptors.XRequestID(),
-			interceptors.LoggerInterceptor(logger),
-			interceptors.UnaryPanicRecoveryInterceptor(logger),
-			interceptors.MetricsInterceptor(),
-		),
+			lc.Append(fx.Hook{
+				OnStart: func(ctx context.Context) error {
+					lis, err := net.Listen("tcp", cfg.GRPCPort)
+					if err != nil {
+						return err
+					}
+					logger.Info("Starting gRPC server", zap.String("port", cfg.GRPCPort))
+
+					go func() {
+						if err := grpcServer.Serve(lis); err != nil {
+							logger.Error("gRPC server error", zap.Error(err))
+						}
+					}()
+					return nil
+				},
+				OnStop: func(ctx context.Context) error {
+					logger.Info("Shutting down gRPC server")
+					grpcServer.GracefulStop()
+					return nil
+				},
+			})
+		}),
 	)
 
-	// Регистрация сервиса
-	v1.RegisterSpotInstrumentServiceServer(grpcServer, spotHandler)
-
-	// Запуск слушателя
-	lis, err := net.Listen("tcp", ":50051")
-	if err != nil {
-		logger.Fatal("Failed to listen on port 50051", zap.Error(err))
-	}
-
-	logger.Info("SpotInstrumentService is listening on port 50051")
-
-	if err := grpcServer.Serve(lis); err != nil {
-		logger.Fatal("Failed to serve gRPC server", zap.Error(err))
-	}
+	app.Run()
 }

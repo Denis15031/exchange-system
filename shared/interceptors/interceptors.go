@@ -18,7 +18,6 @@ const (
 	RequestIDKey = "x-request-id"
 )
 
-// Добавляет x-request-id в контекст, если его нет, или извлекает существующий.
 func XRequestID() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		md, ok := metadata.FromIncomingContext(ctx)
@@ -35,7 +34,6 @@ func XRequestID() grpc.UnaryServerInterceptor {
 	}
 }
 
-// Логирует начало и конец каждого gRPC запроса с использованием zap.
 func LoggerInterceptor(logger *zap.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		requestID := "unknown"
@@ -46,14 +44,13 @@ func LoggerInterceptor(logger *zap.Logger) grpc.UnaryServerInterceptor {
 		}
 		start := time.Now()
 
-		logger.Info("gRPC request started",
+		logger.Info("gRPC request",
 			zap.String("request_id", requestID),
 			zap.String("method", info.FullMethod),
-			zap.Any("payload", req),
+			zap.String("type", "started"),
 		)
 
 		resp, err := handler(ctx, req)
-
 		duration := time.Since(start)
 
 		if err != nil {
@@ -64,9 +61,10 @@ func LoggerInterceptor(logger *zap.Logger) grpc.UnaryServerInterceptor {
 				zap.Error(err),
 			)
 		} else {
-			logger.Info("gRPC request completed",
+			logger.Info("gRPC request",
 				zap.String("request_id", requestID),
 				zap.String("method", info.FullMethod),
+				zap.String("type", "completed"),
 				zap.Duration("duration_ms", duration),
 			)
 		}
@@ -74,7 +72,6 @@ func LoggerInterceptor(logger *zap.Logger) grpc.UnaryServerInterceptor {
 	}
 }
 
-// Перехватывает паники, логирует стек и возвращает стандартную ошибку gRPC.
 func UnaryPanicRecoveryInterceptor(logger *zap.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
 		defer func() {
@@ -90,8 +87,62 @@ func UnaryPanicRecoveryInterceptor(logger *zap.Logger) grpc.UnaryServerIntercept
 	}
 }
 
-// Автоматически собирает метрики: количество запросов, длительность, ошибки.
 func MetricsInterceptor() grpc.UnaryServerInterceptor {
 	grpc_prometheus.EnableHandlingTimeHistogram()
 	return grpc_prometheus.UnaryServerInterceptor
+}
+
+func XRequestIDClientInterceptor() grpc.UnaryClientInterceptor {
+	return func(
+		ctx context.Context,
+		method string,
+		req, reply interface{},
+		cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker,
+		opts ...grpc.CallOption,
+	) error {
+		requestID, ok := ctx.Value(RequestIDKey).(string)
+		if !ok || requestID == "" {
+			requestID = uuid.New().String()
+			ctx = context.WithValue(ctx, RequestIDKey, requestID)
+		}
+		ctx = metadata.AppendToOutgoingContext(ctx, RequestIDKey, requestID)
+
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
+}
+
+func LoggerClientInterceptor(log *zap.Logger) grpc.UnaryClientInterceptor {
+	return func(
+		ctx context.Context,
+		method string,
+		req, reply interface{},
+		cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker,
+		opts ...grpc.CallOption,
+	) error {
+		requestID, _ := ctx.Value(RequestIDKey).(string)
+
+		log.Debug("gRPC client call",
+			zap.String("method", method),
+			zap.String("request_id", requestID),
+		)
+
+		err := invoker(ctx, method, req, reply, cc, opts...)
+
+		if err != nil {
+			log.Error("gRPC client error",
+				zap.String("method", method),
+				zap.String("request_id", requestID),
+				zap.Error(err),
+			)
+		} else {
+			log.Debug("gRPC client call completed",
+				zap.String("method", method),
+				zap.String("request_id", requestID),
+			)
+		}
+
+		return err
+	}
 }

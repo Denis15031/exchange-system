@@ -1,0 +1,93 @@
+syntax = "proto3";
+package user.v1;
+
+option go_package = "exchange-system/proto/user/v1";
+
+import "google/protobuf/timestamp.proto";
+
+
+enum UserRole {
+  USER_ROLE_UNSPECIFIED = 0;
+  USER_ROLE_USER = 1;
+  USER_ROLE_PREMIUM = 2;
+  USER_ROLE_ADMIN = 3;
+}
+
+message User {
+  string user_id = 1;
+  string email = 2;
+  string username = 3;
+  UserRole role = 4;
+  bool is_active = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message RegisterRequest {
+  string email = 1;
+  string password = 2;
+  string username = 3;
+  string idempotency_key = 4;
+}
+
+message RegisterResponse {
+  User user = 1;
+  string access_token = 2;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  User user = 1;
+  string access_token = 2;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message RefreshTokenResponse {
+  string access_token = 1;
+}
+
+message LogoutRequest {
+  string refresh_token = 1;
+}
+
+message LogoutResponse {}
+
+message LogoutAllRequest {
+  string user_id = 1;
+}
+
+message LogoutAllResponse {}
+
+message GetUserRequest {
+  string user_id = 1;
+}
+
+message GetUserResponse {
+  User user = 1;
+}
+
+message UpdateRoleRequest {
+  string user_id = 1;
+  UserRole new_role = 2;
+}
+
+message UpdateRoleResponse {
+  User user = 1;
+}
+
+service UserService {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+  rpc LogoutAll(LogoutAllRequest) returns (LogoutAllResponse);
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  rpc UpdateRole(UpdateRoleRequest) returns (UpdateRoleResponse);
+}
